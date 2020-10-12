@@ -1,6 +1,5 @@
 package com.afesguerra.pictionary.client.gui;
 
-import com.afesguerra.pictionary.client.Hilo;
 import lombok.extern.log4j.Log4j2;
 
 import javax.swing.*;
@@ -84,8 +83,6 @@ public class GameStartFrame extends JFrame {
             final GameFrame gameFrame = new GameFrame(dibujante, channel, newAddress, nombre, word);
             gameFrame.setTitle("Sketching: " + nombre);
             gameFrame.setVisible(true);
-            new Hilo(gameFrame, channel).start();
-
         } catch (IOException e) {
             log.error(e);
         }

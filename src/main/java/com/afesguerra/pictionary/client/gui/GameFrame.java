@@ -20,6 +20,7 @@ public class GameFrame extends JFrame {
     private final DatagramChannel channel;
     private final SocketAddress serverAddress;
     private final String nombre;
+    private final ChannelWorker worker;
 
     /**
      * Crea un objeto de la clase VentanaJuego
@@ -69,7 +70,7 @@ public class GameFrame extends JFrame {
 
         if (drawer) {
             canvas.setCursor(new Cursor(Cursor.CROSSHAIR_CURSOR));
-            canvas.addMouseWheelListener(this::changeColor);
+            canvas.addMouseWheelListener(this::changeColorListener);
             canvas.addMouseMotionListener(new DrawActionListener());
 
             JOptionPane.showMessageDialog(
@@ -92,28 +93,14 @@ public class GameFrame extends JFrame {
                     "A jugar",
                     JOptionPane.INFORMATION_MESSAGE);
         }
+
+        worker = new ChannelWorker();
+        worker.execute();
     }
 
-    public void cambiarColor(Color c) {
-        Graphics g = canvas.getGraphics();
-        g.setColor(c);
-        g.fillRect(10, 20, 20, 20);
-    }
+    // region listeners
 
-    public void dibujar(int x, int y) {
-        Graphics g = canvas.getGraphics();
-        g.fillOval(x - 5, y - 5, 10, 10);
-    }
-
-    public void escribir(String a) {
-        if (chatbox.getText().equals("")) {
-            chatbox.setText(a);
-        } else {
-            chatbox.setText(chatbox.getText() + "\n" + a);
-        }
-    }
-
-    private void changeColor(MouseWheelEvent event) {
+    private void changeColorListener(MouseWheelEvent event) {
         final Random random = new Random();
         final String payload = "4;" + random.nextInt(256) + ";" + random.nextInt(256) + ";" + random.nextInt(256);
         sendMessage(payload);
@@ -142,6 +129,8 @@ public class GameFrame extends JFrame {
         }
     }
 
+    // endregion
+
     private void sendMessage(final String message) {
         final ByteBuffer bb = ByteBuffer.wrap(message.getBytes());
         try {
@@ -149,5 +138,86 @@ public class GameFrame extends JFrame {
         } catch (IOException e) {
             log.error("Error sending message to server", e);
         }
+    }
+
+    private class ChannelWorker extends SwingWorker<Void, Void> {
+        private static final String MESSAGE_SEPARATOR = ";";
+
+        @Override
+        protected Void doInBackground() throws Exception {
+            while (!isCancelled()) {
+                final ByteBuffer bb = ByteBuffer.allocate(10000);
+                channel.receive(bb);
+
+                bb.flip();
+                int limits = bb.limit();
+                byte[] bytes = new byte[limits];
+                bb.get(bytes, 0, limits);
+                final String message = new String(bytes);
+
+                log.trace(message);
+
+                parseMessage(message);
+            }
+            return null;
+        }
+
+        private void parseMessage(final String message) {
+            String[] msj = message.split(MESSAGE_SEPARATOR);
+
+            switch (Integer.parseInt(msj[0])) {
+                case 0:
+                    // Alguien ganó
+                    JOptionPane.showMessageDialog(
+                            GameFrame.this,
+                            msj[2],
+                            "¡¡GANADOR!!",
+                            JOptionPane.INFORMATION_MESSAGE);
+                    System.exit(0);
+                    break;
+                case 1:
+                    // coordenadas
+                    int x = Integer.parseInt(msj[1]);
+                    int y = Integer.parseInt(msj[2]);
+                    dibujar(x, y);
+                    break;
+                case 2:
+                    // palabra+
+                    escribir((msj[1] + ": " + msj[2]));
+                    break;
+                case 3:
+                    // alguien se desconecto
+                    JOptionPane.showMessageDialog(GameFrame.this, msj[2], "Error de conexión", JOptionPane.ERROR_MESSAGE);
+                    System.exit(0);
+                    break;
+                case 4:
+                    final Color color = new Color(Integer.parseInt(msj[1]), Integer.parseInt(msj[2]), Integer.parseInt(msj[3]));
+                    cambiarColor(color);
+                    break;
+                default:
+                    log.warn("Received unexpected message: {}", message);
+                    break;
+            }
+        }
+
+        public void dibujar(int x, int y) {
+            Graphics g = canvas.getGraphics();
+            g.fillOval(x - 5, y - 5, 10, 10);
+        }
+
+        private void escribir(String a) {
+            if (chatbox.getText().equals("")) {
+                chatbox.setText(a);
+            } else {
+                chatbox.setText(chatbox.getText() + "\n" + a);
+            }
+        }
+
+        public void cambiarColor(Color c) {
+            Graphics g = canvas.getGraphics();
+            g.setColor(c);
+            g.fillRect(10, 20, 20, 20);
+        }
+
     }
 }
