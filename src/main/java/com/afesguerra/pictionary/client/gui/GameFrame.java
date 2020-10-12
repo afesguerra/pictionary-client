@@ -6,9 +6,9 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.DatagramChannel;
 import java.util.Random;
 
 @Log4j2
@@ -17,18 +17,16 @@ public class GameFrame extends JFrame {
     private final JPanel canvas; // Panel en el cual se dibuja
     private final JTextField chatInput; // Campo donde se escriben palabras a adivinar
     private final JTextArea chatbox; // Campo donde aparecen las palabras enviadas
-    private final DatagramSocket socket;
-    private final InetAddress ip;
-    private final int port;
+    private final DatagramChannel channel;
+    private final SocketAddress serverAddress;
     private final String nombre;
 
     /**
      * Crea un objeto de la clase VentanaJuego
      */
-    public GameFrame(final boolean drawer, final DatagramSocket socket, final InetAddress ip, final int port, final String nombre, final String word) {
-        this.socket = socket;
-        this.ip = ip;
-        this.port = port;
+    public GameFrame(final boolean drawer, final DatagramChannel channel, final SocketAddress serverAddress, final String nombre, final String word) {
+        this.channel = channel;
+        this.serverAddress = serverAddress;
         this.nombre = nombre;
         setSize(800, 600);
         setLocationRelativeTo(null);
@@ -108,59 +106,48 @@ public class GameFrame extends JFrame {
     }
 
     public void escribir(String a) {
-        if (chatbox.getText().equals(""))
+        if (chatbox.getText().equals("")) {
             chatbox.setText(a);
-        else
+        } else {
             chatbox.setText(chatbox.getText() + "\n" + a);
+        }
     }
 
     private void changeColor(MouseWheelEvent event) {
         final Random random = new Random();
         final String payload = "4;" + random.nextInt(256) + ";" + random.nextInt(256) + ";" + random.nextInt(256);
-        DatagramPacket pck = new DatagramPacket(payload.getBytes(), payload.getBytes().length, ip, port);
-        try {
-            socket.send(pck);
-        } catch (IOException e) {
-            log.error(e);
-        }
+        sendMessage(payload);
     }
 
     private void sendWordListener(ActionEvent event) {
-        try {
-            if (!chatInput.getText().equalsIgnoreCase("")) {
-                String a = chatInput.getText();
-                String p = "2;" + nombre + ";" + a.replace(';', ' ');
-                DatagramPacket pck = new DatagramPacket(p.getBytes(),
-                        p.getBytes().length, ip, port);
-                socket.send(pck);
-                chatInput.setText("");
-            }
-        } catch (IOException e) {
-            log.error(e);
+        if (!chatInput.getText().equalsIgnoreCase("")) {
+            String writtenWord = chatInput.getText();
+            String message = "2;" + nombre + ";" + writtenWord.replace(';', ' ');
+            sendMessage(message);
+            chatInput.setText("");
         }
     }
 
     private class DrawActionListener extends MouseMotionAdapter {
         public void mouseDragged(MouseEvent event) {
-            try {
-                String p = String.join(";", "1", String.valueOf(event.getX()), String.valueOf(event.getY()));
-                DatagramPacket pck = new DatagramPacket(p.getBytes(), p.getBytes().length, ip, port);
-                socket.send(pck);
-            } catch (IOException e) {
-                log.error(e);
-            }
+            String p = String.join(";", "1", String.valueOf(event.getX()), String.valueOf(event.getY()));
+            sendMessage(p);
         }
     }
 
     private class CloseWindowListener extends WindowAdapter {
         public void windowClosing(WindowEvent event) {
-            try {
-                String p = "3;" + nombre;
-                DatagramPacket pck = new DatagramPacket(p.getBytes(), p.getBytes().length, ip, port);
-                socket.send(pck);
-            } catch (IOException e) {
-                log.error(e);
-            }
+            String p = "3;" + nombre;
+            sendMessage(p);
+        }
+    }
+
+    private void sendMessage(final String message) {
+        final ByteBuffer bb = ByteBuffer.wrap(message.getBytes());
+        try {
+            channel.send(bb, serverAddress);
+        } catch (IOException e) {
+            log.error("Error sending message to server", e);
         }
     }
 }

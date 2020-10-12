@@ -6,36 +6,44 @@ import lombok.extern.log4j.Log4j2;
 import javax.swing.*;
 import java.awt.*;
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
+import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.DatagramChannel;
 
 @Log4j2
 public class Hilo extends Thread {
     private static final String MESSAGE_SEPARATOR = ";";
     private final GameFrame window; // Ventana en la cual se juega
-    private final DatagramSocket sck; // Socket por el cual se recibe información
+    private final DatagramChannel sck; // Socket por el cual se recibe información
 
-    public Hilo(GameFrame window, DatagramSocket sck) {
+    public Hilo(GameFrame window, DatagramChannel sck) {
         this.window = window;
         this.sck = sck;
     }
 
     @Override
     public void run() {
-        while (!isInterrupted()) {
-            try {
-                final byte[] a = new byte[10000];
-                final DatagramPacket pck = new DatagramPacket(a, a.length);
-                sck.receive(pck);
-                parseMessage(pck);
-            } catch (IOException e) {
-                log.error(e);
+        try {
+            while (!isInterrupted()) {
+                final ByteBuffer bb = ByteBuffer.allocate(10000);
+                sck.receive(bb);
+
+                bb.flip();
+                int limits = bb.limit();
+                byte[] bytes = new byte[limits];
+                bb.get(bytes, 0, limits);
+                final String message = new String(bytes);
+
+                log.trace(message);
+
+                parseMessage(message);
             }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 
-    private void parseMessage(DatagramPacket pck) {
-        final String message = new String(pck.getData(), 0, pck.getLength());
+    private void parseMessage(final String message) {
         String[] msj = message.split(MESSAGE_SEPARATOR);
 
         switch (Integer.parseInt(msj[0])) {
